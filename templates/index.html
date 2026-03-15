@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NETGUARD - Network Monitoring & IDS</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Orbitron:wght@400;700;900&display=swap');
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'JetBrains Mono', monospace;
+            background: #0a0e1a;
+            color: #e0e6ed;
+            overflow-x: hidden;
+        }
+
+        .glow {
+            text-shadow: 0 0 10px currentColor, 0 0 20px currentColor, 0 0 30px currentColor;
+        }
+
+        .pulse {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .scan-line {
+            position: relative;
+            overflow: hidden;
+        }
+
+        .scan-line::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #00ff88, transparent);
+            animation: scan 3s linear infinite;
+        }
+
+        @keyframes scan {
+            0% { left: -100%; }
+            100% { left: 100%; }
+        }
+
+        .grid-bg {
+            background-image: 
+                linear-gradient(rgba(0, 255, 136, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 255, 136, 0.03) 1px, transparent 1px);
+            background-size: 30px 30px;
+        }
+
+        header {
+            border-bottom: 1px solid #1e293b;
+            background: linear-gradient(to right, #0f172a, #1e293b);
+            backdrop-filter: blur(10px);
+            position: sticky;
+            top: 0;
+            z-index: 50;
+        }
+
+        .header-content {
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 1rem 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .logo-section {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .shield-icon {
+            width: 2rem;
+            height: 2rem;
+            color: #00ff88;
+        }
+
+        .logo-text {
+            font-size: 1.5rem;
+            font-weight: bold;
+            font-family: 'Orbitron', monospace;
+        }
+
+        .divider {
+            height: 1.5rem;
+            width: 1px;
+            background: #1e293b;
+        }
+
+        .subtitle {
+            font-size: 0.875rem;
+            color: #64748b;
+        }
+
+        .status-section {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.875rem;
+        }
+
+        .status-dot {
+            width: 0.5rem;
+            height: 0.5rem;
+            background: #00ff88;
+            border-radius: 50%;
+        }
+
+        .container {
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 1.5rem;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, rgba(15, 23, 42, 0.9), rgba(30, 41, 59, 0.7));
+            border: 1px solid rgba(0, 255, 136, 0.2);
+            border-radius: 0.5rem;
+            padding: 1.5rem;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+
+        .stat-card:hover {
+            border-color: rgba(0, 255, 136, 0.5);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(0, 255, 136, 0.15);
+        }
+
+        .stat-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 0.75rem;
+        }
+
+        .stat-label {
+            font-size: 0.75rem;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .stat-value {
+            font-family: 'Orbitron', monospace;
+            font-weight: 700;
+            font-size: 2rem;
+            line-height: 1;
+        }
+
+        .tabs {
+            border-bottom: 1px solid #1e293b;
+            margin-bottom: 1.5rem;
+        }
+
+        .tab-buttons {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .tab-button {
+            padding: 0.75rem 1.5rem;
+            background: transparent;
+            border: none;
+            color: #64748b;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.875rem;
+            cursor: pointer;
+            position: relative;
+            transition: all 0.3s ease;
+        }
+
+        .tab-button:hover {
+            color: #00ff88;
+        }
+
+        .tab-button.active {
+            color: #00ff88;
+        }
+
+        .tab-button.active::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: #00ff88;
+            box-shadow: 0 0 10px #00ff88;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .terminal-window {
+            background: #0d1117;
+            border: 1px solid rgba(0, 255, 136, 0.3);
+            border-radius: 0.5rem;
+            overflow: hidden;
+        }
+
+        .terminal-header {
+            background: linear-gradient(180deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.9));
+            border-bottom: 1px solid rgba(0, 255, 136, 0.3);
+            padding: 0.5rem 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .terminal-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+
+        .terminal-title {
+            font-size: 0.75rem;
+            color: #64748b;
+            margin-left: 0.5rem;
+        }
+
+        .terminal-body {
+            padding: 1rem;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .log-entry {
+            border-left: 2px solid transparent;
+            margin-bottom: 0.75rem;
+            padding-bottom: 0.75rem;
+            padding-left: 0.75rem;
+            border-bottom: 1px solid #1e293b;
+            transition: all 0.3s ease;
+            font-size: 0.75rem;
+        }
+
+        .log-entry:last-child {
+            border-bottom: none;
+        }
+
+        .log-entry:hover {
+            background: rgba(0, 255, 136, 0.05);
+            border-left-color: #00ff88;
+        }
+
+        .log-header {
+            display: flex;
+            align-items: start;
+            justify-content: space-between;
+            margin-bottom: 0.25rem;
+        }
+
+        .log-type {
+            font-weight: bold;
+            font-size: 0.75rem;
+        }
+
+        .log-time {
+            font-size: 0.75rem;
+            color: #64748b;
+        }
+
+        .log-message {
+            font-size: 0.75rem;
+            color: #e0e6ed;
+            margin-bottom: 0.25rem;
+        }
+
+        .log-details {
+            font-size: 0.75rem;
+            color: #64748b;
+        }
+
+        .threat-entry {
+            margin-bottom: 1rem;
+            padding-bottom: 1rem;
+            padding-left: 1rem;
+            border-bottom: 1px solid #1e293b;
+        }
+
+        .threat-entry:last-child {
+            border-bottom: none;
+        }
+
+        .threat-header {
+            display: flex;
+            align-items: start;
+            justify-content: space-between;
+            margin-bottom: 0.75rem;
+        }
+
+        .threat-severity {
+            font-weight: bold;
+            font-size: 0.875rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .threat-type {
+            font-size: 1rem;
+            color: #00ff88;
+        }
+
+        .threat-details {
+            margin-left: 2rem;
+        }
+
+        .threat-detail-item {
+            font-size: 0.875rem;
+            color: #94a3b8;
+            margin-bottom: 0.25rem;
+        }
+
+        .threat-label {
+            color: #64748b;
+        }
+
+        .empty-state {
+            text-align: center;
+            color: #64748b;
+            padding: 4rem 0;
+        }
+
+        .empty-icon {
+            width: 4rem;
+            height: 4rem;
+            margin: 0 auto 1rem;
+            opacity: 0.2;
+        }
+
+        .grid-layout {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .info-box {
+            margin-top: 2rem;
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+            border: 1px solid #1e293b;
+            background: linear-gradient(to right, #0f172a, #1e293b);
+        }
+
+        .info-header {
+            display: flex;
+            align-items: start;
+            gap: 1rem;
+        }
+
+        .info-icon {
+            width: 1.25rem;
+            height: 1.25rem;
+            color: #00ff88;
+            flex-shrink: 0;
+            margin-top: 0.25rem;
+        }
+
+        .info-title {
+            font-size: 0.875rem;
+            font-weight: bold;
+            color: #00ff88;
+            margin-bottom: 0.5rem;
+        }
+
+        .info-content {
+            font-size: 0.875rem;
+            color: #94a3b8;
+        }
+
+        .info-list {
+            list-style: disc;
+            margin-left: 1.5rem;
+            margin-top: 0.5rem;
+        }
+
+        .info-list li {
+            margin-bottom: 0.25rem;
+        }
+
+        .info-list strong {
+            color: #e0e6ed;
+        }
+
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.5);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(0, 255, 136, 0.3);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(0, 255, 136, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-content">
+            <div class="logo-section">
+                <div class="logo">
+                    <svg class="shield-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                    </svg>
+                    <h1 class="logo-text">
+                        <span style="color: #00ff88;" class="glow">NET</span><span style="color: white;">GUARD</span>
+                    </h1>
+                </div>
+                <div class="divider"></div>
+                <span class="subtitle">Home Network IDS</span>
+            </div>
+            <div class="status-section">
+                <div class="status-indicator">
+                    <div class="status-dot pulse"></div>
+                    <span style="color: #64748b;">System Active</span>
+                </div>
+                <div style="color: #64748b; font-size: 0.875rem;" id="current-time"></div>
+            </div>
+        </div>
+    </header>
+
+    <div class="container grid-bg">
+        <!-- Stats Grid -->
+        <div class="stats-grid">
+            <div class="stat-card scan-line">
+                <div class="stat-header">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#00ff88" stroke-width="2">
+                        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                    </svg>
+                    <span class="stat-label">Packets/sec</span>
+                </div>
+                <div class="stat-value" style="color: #00ff88;" id="packets-stat">0</div>
+            </div>
+
+            <div class="stat-card scan-line">
+                <div class="stat-header">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2">
+                        <path d="M5 12.55a11 11 0 0 1 14.08 0"/>
+                        <path d="M1.42 9a16 16 0 0 1 21.16 0"/>
+                        <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
+                        <circle cx="12" cy="20" r="1"/>
+                    </svg>
+                    <span class="stat-label">Connections</span>
+                </div>
+                <div class="stat-value" style="color: #3b82f6;" id="connections-stat">0</div>
+            </div>
+
+            <div class="stat-card scan-line">
+                <div class="stat-header">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ff4444" stroke-width="2">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                    </svg>
+                    <span class="stat-label">Blocked</span>
+                </div>
+                <div class="stat-value" style="color: #ff4444;" id="blocked-stat">0</div>
+            </div>
+
+            <div class="stat-card scan-line">
+                <div class="stat-header">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ffaa00" stroke-width="2">
+                        <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/>
+                        <polyline points="17 6 23 6 23 12"/>
+                    </svg>
+                    <span class="stat-label">Bandwidth</span>
+                </div>
+                <div class="stat-value" style="color: #ffaa00;" id="bandwidth-stat">0 <span style="font-size: 1rem; color: #64748b;">MB/s</span></div>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="tabs">
+            <div class="tab-buttons">
+                <button class="tab-button active" onclick="switchTab('overview')">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display: inline; margin-right: 0.5rem; vertical-align: middle;">
+                        <polyline points="4 17 10 11 4 5"/>
+                        <line x1="12" y1="19" x2="20" y2="19"/>
+                    </svg>
+                    Overview
+                </button>
+                <button class="tab-button" onclick="switchTab('threats')">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display: inline; margin-right: 0.5rem; vertical-align: middle;">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <line x1="12" y1="9" x2="12" y2="13"/>
+                        <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    Threats (<span id="threat-count">0</span>)
+                </button>
+                <button class="tab-button" onclick="switchTab('logs')">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display: inline; margin-right: 0.5rem; vertical-align: middle;">
+                        <ellipse cx="12" cy="5" rx="9" ry="3"/>
+                        <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
+                        <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+                    </svg>
+                    Live Logs
+                </button>
+            </div>
+        </div>
+
+        <!-- Overview Tab -->
+        <div id="overview-tab" class="tab-content active">
+            <div class="grid-layout">
+                <div class="terminal-window">
+                    <div class="terminal-header">
+                        <div class="terminal-dot" style="background: #ff4444;"></div>
+                        <div class="terminal-dot" style="background: #ffaa00;"></div>
+                        <div class="terminal-dot" style="background: #00ff88;"></div>
+                        <span class="terminal-title">Recent Threats</span>
+                    </div>
+                    <div class="terminal-body" id="recent-threats">
+                        <div class="empty-state">
+                            <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                            </svg>
+                            <div style="font-size: 1.125rem; margin-bottom: 0.5rem;">All Clear</div>
+                            <div style="font-size: 0.875rem;">No threats detected</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="terminal-window">
+                    <div class="terminal-header">
+                        <div class="terminal-dot" style="background: #ff4444;"></div>
+                        <div class="terminal-dot" style="background: #ffaa00;"></div>
+                        <div class="terminal-dot" style="background: #00ff88;"></div>
+                        <span class="terminal-title">Live Activity</span>
+                    </div>
+                    <div class="terminal-body" id="live-activity"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Threats Tab -->
+        <div id="threats-tab" class="tab-content">
+            <div class="terminal-window">
+                <div class="terminal-header">
+                    <div class="terminal-dot" style="background: #ff4444;"></div>
+                    <div class="terminal-dot" style="background: #ffaa00;"></div>
+                    <div class="terminal-dot" style="background: #00ff88;"></div>
+                    <span class="terminal-title">Threat Detection Log</span>
+                </div>
+                <div class="terminal-body" style="max-height: 600px;" id="all-threats">
+                    <div class="empty-state">
+                        <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                        </svg>
+                        <div style="font-size: 1.125rem; margin-bottom: 0.5rem;">All Clear</div>
+                        <div style="font-size: 0.875rem;">No threats detected on your network</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Logs Tab -->
+        <div id="logs-tab" class="tab-content">
+            <div class="terminal-window">
+                <div class="terminal-header">
+                    <div class="terminal-dot" style="background: #ff4444;"></div>
+                    <div class="terminal-dot" style="background: #ffaa00;"></div>
+                    <div class="terminal-dot" style="background: #00ff88;"></div>
+                    <span class="terminal-title">Network Traffic Log Stream</span>
+                </div>
+                <div class="terminal-body" style="max-height: 600px; font-size: 0.75rem;" id="all-logs"></div>
+            </div>
+        </div>
+
+        <!-- Info Box -->
+        <div class="info-box">
+            <div class="info-header">
+                <svg class="info-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                </svg>
+                <div>
+                    <h3 class="info-title">Real Network Monitoring Setup</h3>
+                    <div class="info-content">
+                        <p>This system includes mock data for demonstration. To monitor your actual network:</p>
+                        <ul class="info-list">
+                            <li><strong>Install Scapy:</strong> pip install scapy (requires root/admin privileges for packet capture)</li>
+                            <li><strong>Use tcpdump:</strong> Capture packets with tcpdump or tshark and parse the output</li>
+                            <li><strong>Integrate Suricata/Snort:</strong> Connect real IDS engines for advanced threat detection</li>
+                            <li><strong>Database Storage:</strong> Add SQLite/PostgreSQL to persist logs and threats</li>
+                            <li><strong>Port Mirroring:</strong> Configure your router to mirror traffic to this monitoring system</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let logs = [];
+        let threats = [];
+
+        // Update time
+        function updateTime() {
+            const now = new Date();
+            document.getElementById('current-time').textContent = now.toLocaleTimeString('en-US', { hour12: false });
+        }
+        setInterval(updateTime, 1000);
+        updateTime();
+
+        // Tab switching
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            
+            event.target.classList.add('active');
+            document.getElementById(tabName + '-tab').classList.add('active');
+        }
+
+        // Socket event handlers
+        socket.on('connect', () => {
+            console.log('Connected to server');
+        });
+
+        socket.on('stats_update', (stats) => {
+            document.getElementById('packets-stat').textContent = stats.packets_per_sec.toLocaleString();
+            document.getElementById('connections-stat').textContent = stats.active_connections;
+            document.getElementById('blocked-stat').textContent = stats.blocked_attempts;
+            document.getElementById('bandwidth-stat').innerHTML = stats.bandwidth + ' <span style="font-size: 1rem; color: #64748b;">MB/s</span>';
+        });
+
+        socket.on('new_log', (log) => {
+            logs.unshift(log);
+            if (logs.length > 100) logs.pop();
+            updateLiveActivity();
+            updateAllLogs();
+        });
+
+        socket.on('new_threat', (threat) => {
+            threats.unshift(threat);
+            if (threats.length > 50) threats.pop();
+            updateRecentThreats();
+            updateAllThreats();
+            document.getElementById('threat-count').textContent = threats.length;
+        });
+
+        function updateLiveActivity() {
+            const container = document.getElementById('live-activity');
+            const recentLogs = logs.slice(0, 8);
+            
+            if (recentLogs.length === 0) {
+                container.innerHTML = '<div class="empty-state" style="padding: 2rem 0;">No activity yet</div>';
+                return;
+            }
+
+            container.innerHTML = recentLogs.map(log => `
+                <div class="log-entry">
+                    <div class="log-header">
+                        <span class="log-type" style="color: ${getLogColor(log.type)}">[${log.type}]</span>
+                        <span class="log-time">${new Date(log.timestamp).toLocaleTimeString()}</span>
+                    </div>
+                    <div class="log-message">${log.message}</div>
+                    <div class="log-details">${log.source} → ${log.destination} | ${log.protocol}:${log.port}</div>
+                </div>
+            `).join('');
+        }
+
+        function updateRecentThreats() {
+            const container = document.getElementById('recent-threats');
+            const recentThreats = threats.slice(0, 5);
+            
+            if (recentThreats.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                        </svg>
+                        <div style="font-size: 1.125rem; margin-bottom: 0.5rem;">All Clear</div>
+                        <div style="font-size: 0.875rem;">No threats detected</div>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = recentThreats.map(threat => `
+                <div class="threat-entry">
+                    <div class="threat-header">
+                        <div style="display: flex; align-items: center; gap: 0.75rem;">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="${getSeverityColor(threat.severity)}" stroke-width="2">
+                                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                                <line x1="12" y1="9" x2="12" y2="13"/>
+                                <line x1="12" y1="17" x2="12.01" y2="17"/>
+                            </svg>
+                            <div>
+                                <div class="threat-severity" style="color: ${getSeverityColor(threat.severity)}; text-shadow: 0 0 10px ${getSeverityColor(threat.severity)};">
+                                    ${threat.severity} SEVERITY
+                                </div>
+                                <div class="threat-type">${threat.type}</div>
+                            </div>
+                        </div>
+                        <span class="log-time">${new Date(threat.timestamp).toLocaleTimeString()}</span>
+                    </div>
+                    <div class="threat-details">
+                        <div class="threat-detail-item"><span class="threat-label">Source IP:</span> ${threat.source}</div>
+                        <div class="threat-detail-item"><span class="threat-label">Description:</span> ${threat.description}</div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function updateAllThreats() {
+            const container = document.getElementById('all-threats');
+            
+            if (threats.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                        </svg>
+                        <div style="font-size: 1.125rem; margin-bottom: 0.5rem;">All Clear</div>
+                        <div style="font-size: 0.875rem;">No threats detected on your network</div>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = threats.map(threat => `
+                <div class="threat-entry">
+                    <div class="threat-header">
+                        <div style="display: flex; align-items: center; gap: 0.75rem;">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="${getSeverityColor(threat.severity)}" stroke-width="2">
+                                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                                <line x1="12" y1="9" x2="12" y2="13"/>
+                                <line x1="12" y1="17" x2="12.01" y2="17"/>
+                            </svg>
+                            <div>
+                                <div class="threat-severity" style="color: ${getSeverityColor(threat.severity)}; text-shadow: 0 0 10px ${getSeverityColor(threat.severity)};">
+                                    ${threat.severity} SEVERITY
+                                </div>
+                                <div class="threat-type">${threat.type}</div>
+                            </div>
+                        </div>
+                        <span class="log-time">${new Date(threat.timestamp).toLocaleString()}</span>
+                    </div>
+                    <div class="threat-details">
+                        <div class="threat-detail-item"><span class="threat-label">Source IP:</span> ${threat.source}</div>
+                        <div class="threat-detail-item"><span class="threat-label">Description:</span> ${threat.description}</div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function updateAllLogs() {
+            const container = document.getElementById('all-logs');
+            
+            container.innerHTML = logs.map(log => `
+                <div class="log-entry" style="margin-bottom: 0.5rem; padding-bottom: 0.5rem;">
+                    <span style="color: #64748b;">${new Date(log.timestamp).toLocaleTimeString()}</span>
+                    <span class="log-type" style="color: ${getLogColor(log.type)}; margin-left: 0.5rem;">[${log.type}]</span>
+                    <span style="color: #94a3b8; margin-left: 0.5rem;">${log.protocol}</span>
+                    <span style="color: #3b82f6; margin-left: 0.5rem;">${log.source}</span>
+                    <span style="color: #64748b;"> → </span>
+                    <span style="color: #00ff88;">${log.destination}</span>
+                    <span style="color: #ffaa00;">:${log.port}</span>
+                    <span style="color: #e0e6ed; margin-left: 0.5rem;"> - ${log.message}</span>
+                </div>
+            `).join('');
+        }
+
+        function getLogColor(type) {
+            const colors = {
+                'ALERT': '#ff4444',
+                'WARNING': '#ffaa00',
+                'INFO': '#3b82f6',
+                'NORMAL': '#00ff88'
+            };
+            return colors[type] || '#00ff88';
+        }
+
+        function getSeverityColor(severity) {
+            return severity === 'HIGH' ? '#ff4444' : '#ffaa00';
+        }
+
+        // Initial load
+        fetch('/api/stats')
+            .then(r => r.json())
+            .then(stats => {
+                document.getElementById('packets-stat').textContent = stats.packets_per_sec.toLocaleString();
+                document.getElementById('connections-stat').textContent = stats.active_connections;
+                document.getElementById('blocked-stat').textContent = stats.blocked_attempts;
+                document.getElementById('bandwidth-stat').innerHTML = stats.bandwidth + ' <span style="font-size: 1rem; color: #64748b;">MB/s</span>';
+            });
+
+        fetch('/api/logs')
+            .then(r => r.json())
+            .then(data => {
+                logs = data;
+                updateLiveActivity();
+                updateAllLogs();
+            });
+
+        fetch('/api/threats')
+            .then(r => r.json())
+            .then(data => {
+                threats = data;
+                updateRecentThreats();
+                updateAllThreats();
+                document.getElementById('threat-count').textContent = threats.length;
+            });
+    </script>
+</body>
+</html>
