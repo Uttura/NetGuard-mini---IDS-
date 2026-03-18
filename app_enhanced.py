@@ -34,7 +34,7 @@ import sys
 
 # Check for required dependencies
 try:
-    from packet_capture import PacketAnalyzer
+    from packet_capture import EnhancedPacketAnalyzer as PacketAnalyzer
 except ImportError:
     print("❌ Error: packet_capture module not found!")
     print("   Make sure packet_capture.py is in the same directory")
@@ -100,6 +100,7 @@ IDS_RULES = {
 
 # Tracking structures
 port_access_tracker = {}
+analyzer = None  # Global analyzer instance
 
 
 def get_network_interfaces():
@@ -240,6 +241,8 @@ def start_packet_capture(interface='any'):
     Start real packet capture
     Runs in background thread
     """
+    global analyzer
+    
     print(f"🔍 Starting packet capture on interface: {interface}")
     print("   This may take a moment to initialize...")
     
@@ -296,6 +299,30 @@ def get_status():
 def get_rules():
     """Get IDS rules configuration"""
     return jsonify(IDS_RULES)
+
+
+@app.route('/api/dns')
+def get_dns():
+    """Get DNS query history"""
+    if hasattr(analyzer, 'dns_tracker'):
+        return jsonify(dict(analyzer.dns_tracker))
+    return jsonify({})
+
+
+@app.route('/api/http')
+def get_http():
+    """Get HTTP request history"""
+    if hasattr(analyzer, 'http_tracker'):
+        return jsonify(dict(analyzer.http_tracker))
+    return jsonify({})
+
+
+@app.route('/api/statistics')
+def get_statistics():
+    """Get detailed statistics"""
+    if hasattr(analyzer, 'get_statistics'):
+        return jsonify(analyzer.get_statistics())
+    return jsonify({})
 
 
 # ==================== WebSocket Events ====================
