@@ -227,8 +227,8 @@ port_access_tracker = {}              # Port scan tracking
                            │
                            ▼
 ┌─────────────────────────────────────────────────────────────┐
-│              packet_capture_callback()                       │
-│              (app_clean.py)                                  │
+│              packet_capture_callback()                      │
+│                 (app_enhanced.py)                           │
 └──────────────────────────┬──────────────────────────────────┘
                            │
         ┌──────────────────┼──────────────────┐
