@@ -422,10 +422,10 @@ port_access_tracker = {}
 
 ```
 NetGuard/
-├── app_clean.py                    # Flask backend & API
-├── packet_capture_enhanced.py      # Packet analysis engine
+├── app_enhanced.py                    # Flask backend & API
+├── packet_capture.py      # Packet analysis engine
 ├── templates/
-│   └── index_enhanced.html         # Browser dashboard
+│   └── index.html         # Browser dashboard
 ├── static/                         # (optional) CSS/JS files
 └── README.md                       # This file
 ```
