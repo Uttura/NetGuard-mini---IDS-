@@ -20,6 +20,372 @@
         .tab.active { color: #00ff88; border-bottom-color: #00ff88; }
         .tab-content { display: none; padding: 20px; }
         .tab-content.active { display: block; }
+        .log-container { background: #0d1117; border: 1px solid #1e293b; border-radius: 8px; padding: 15px; max-height: 600px; min-height: 200px; overflow-y: auto; }
+        .log-entry { padding: 10px; margin-bottom: 8px; background: #1e293b; border-radius: 5px; border-left: 3px solid #00ff88; font-family: monospace; font-size: 13px; }
+        .log-entry.alert { border-left-color: #ff4444; background: rgba(255, 68, 68, 0.1); }
+        .threat-entry { padding: 15px; margin-bottom: 10px; background: rgba(255, 68, 68, 0.1); border: 1px solid #ff4444; border-radius: 5px; min-height: 60px; }
+        .threat-entry h4 { color: #ff4444; margin-bottom: 5px; }
+        .dns-entry, .http-entry { padding: 10px; margin-bottom: 8px; background: #1e293b; border-radius: 5px; border-left: 3px solid #3b82f6; }
+        .flag-entry { padding: 10px; margin-bottom: 8px; background: #1e293b; border-radius: 5px; border-left: 3px solid #f59e0b; font-family: monospace; font-size: 13px; }
+        .flag-badge { display: inline-block; padding: 2px 6px; margin: 0 2px; border-radius: 3px; font-size: 11px; font-weight: bold; }
+        .flag-S { background: #3b82f6; color: white; }
+        .flag-A { background: #10b981; color: white; }
+        .flag-F { background: #f59e0b; color: white; }
+        .flag-R { background: #ef4444; color: white; }
+        .flag-P { background: #8b5cf6; color: white; }
+        .flag-U { background: #ec4899; color: white; }
+        .timestamp { color: #64748b; font-size: 11px; }
+    </style>
+</head>
+<body>
+    <div class="header"><h1>🛡️ NetGuard - Enhanced Network Monitor</h1></div>
+    
+    <div class="stats-grid">
+        <div class="stat-card"><h3>Total Packets</h3><div class="value" id="total-packets">0</div></div>
+        <div class="stat-card"><h3>Packets/sec</h3><div class="value" id="packets-per-sec">0</div></div>
+        <div class="stat-card"><h3>Bandwidth</h3><div class="value" id="bandwidth">0 <span style="font-size: 16px;">MB/s</span></div></div>
+        <div class="stat-card"><h3>Active Connections</h3><div class="value" id="connections">0</div></div>
+        <div class="stat-card"><h3>Threats</h3><div class="value" id="threats-count" style="color: #ff4444;">0</div></div>
+    </div>
+    
+    <div class="tabs">
+        <button class="tab active" onclick="switchTab('overview')">📊 Overview</button>
+        <button class="tab" onclick="switchTab('logs')">📡 Live Logs</button>
+        <button class="tab" onclick="switchTab('threats')">⚠️ Threats</button>
+        <button class="tab" onclick="switchTab('flags')">🚩 Flags</button>
+        <button class="tab" onclick="switchTab('dns')">🌐 DNS</button>
+        <button class="tab" onclick="switchTab('http')">🔗 HTTP</button>
+        <button class="tab" onclick="switchTab('stats')">📈 Stats</button>
+    </div>
+    
+    <div id="overview" class="tab-content active">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+            <div><h3 style="color: #ff4444; margin-bottom: 10px;">Recent Threats</h3>
+                <div class="log-container" id="overview-threats" style="max-height: 300px;"></div></div>
+            <div><h3 style="color: #f59e0b; margin-bottom: 10px;">Recent Flags</h3>
+                <div class="log-container" id="overview-flags" style="max-height: 300px;"></div></div>
+            <div style="grid-column: span 2;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <div><h3 style="color: #3b82f6; margin-bottom: 10px;">Recent DNS Queries</h3>
+                        <div class="log-container" id="overview-dns" style="max-height: 300px;"></div></div>
+                    <div><h3 style="color: #06b6d4; margin-bottom: 10px;">Recent HTTP Requests</h3>
+                        <div class="log-container" id="overview-http" style="max-height: 300px;"></div></div>
+                </div>
+            </div>
+            <div style="grid-column: span 2;"><h3 style="color: #00ff88; margin-bottom: 10px;">Live Packets</h3>
+                <div class="log-container" id="overview-logs" style="max-height: 300px;"></div></div>
+        </div>
+    </div>
+    
+    <div id="logs" class="tab-content">
+        <div class="log-container" id="log-list"></div>
+    </div>
+    
+    <div id="threats" class="tab-content">
+        <div class="log-container" id="threat-list"></div>
+    </div>
+    
+    <div id="flags" class="tab-content">
+        <div class="log-container" id="flags-list"></div>
+    </div>
+    
+    <div id="dns" class="tab-content">
+        <div class="log-container" id="dns-list"></div>
+    </div>
+    
+    <div id="http" class="tab-content">
+        <div class="log-container" id="http-list"></div>
+    </div>
+    
+    <div id="stats" class="tab-content">
+        <div class="log-container" id="stats-details"></div>
+    </div>
+    
+    <script>
+        const socket = io();
+        
+        function switchTab(tab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            event.target.classList.add('active');
+            document.getElementById(tab).classList.add('active');
+            if (tab === 'overview') loadOverview();
+            if (tab === 'threats') loadThreats();
+            if (tab === 'flags') loadFlags();
+            if (tab === 'dns') loadDNS();
+            if (tab === 'http') loadHTTP();
+            if (tab === 'stats') loadStats();
+        }
+        
+        function loadOverview() {
+            loadFlags(true);
+            loadDNS(true);
+            loadHTTP(true);
+        }
+        
+        function loadFlags(isOverview = false) {
+            fetch('/api/logs').then(r => r.json()).then(logs => {
+                const list = document.getElementById(isOverview ? 'overview-flags' : 'flags-list');
+                list.innerHTML = '';
+                
+                // Filter logs with TCP flags
+                const flaggedLogs = logs.filter(log => log.flags && log.protocol === 'TCP');
+                
+                if (flaggedLogs.length === 0) {
+                    list.innerHTML = '<div style="text-align: center; padding: 40px; color: #64748b;">No TCP flags captured yet</div>';
+                    return;
+                }
+                
+                const logsToShow = isOverview ? flaggedLogs.slice(-5).reverse() : flaggedLogs.reverse();
+                
+                logsToShow.forEach(log => {
+                    const entry = document.createElement('div');
+                    entry.className = 'flag-entry';
+                    
+                    // Parse flags and create badges
+                    const flagStr = log.flags || '';
+                    let flagBadges = '';
+                    if (flagStr.includes('S')) flagBadges += '<span class="flag-badge flag-S">SYN</span>';
+                    if (flagStr.includes('A')) flagBadges += '<span class="flag-badge flag-A">ACK</span>';
+                    if (flagStr.includes('F')) flagBadges += '<span class="flag-badge flag-F">FIN</span>';
+                    if (flagStr.includes('R')) flagBadges += '<span class="flag-badge flag-R">RST</span>';
+                    if (flagStr.includes('P')) flagBadges += '<span class="flag-badge flag-P">PSH</span>';
+                    if (flagStr.includes('U')) flagBadges += '<span class="flag-badge flag-U">URG</span>';
+                    
+                    entry.innerHTML = `
+                        <div class="timestamp">${new Date(log.timestamp).toLocaleTimeString()}</div>
+                        <div>${log.source}:${log.sport||0} → ${log.destination}:${log.port}</div>
+                        <div style="margin-top: 5px;">Flags: ${flagBadges || 'NONE'}</div>
+                        ${isOverview ? '' : '<div style="color: #64748b; font-size: 11px; margin-top: 3px;">'+log.message+'</div>'}
+                    `;
+                    list.appendChild(entry);
+                });
+            });
+        }
+        
+        function loadThreats() {
+            fetch('/api/threats').then(r => r.json()).then(threats => {
+                const list = document.getElementById('threat-list');
+                list.innerHTML = '';
+                threats.reverse().forEach(threat => {
+                    const entry = document.createElement('div');
+                    entry.className = 'threat-entry';
+                    entry.innerHTML = `<h4>${threat.type} - ${threat.severity}</h4>
+                        <div class="timestamp">${new Date(threat.timestamp).toLocaleTimeString()}</div>
+                        <div>Source: ${threat.source}</div>
+                        <div style="margin-top: 5px;">${threat.description}</div>`;
+                    list.appendChild(entry);
+                });
+                if (list.children.length === 0) {
+                    list.innerHTML = '<div style="text-align: center; padding: 40px; color: #64748b;">No threats detected</div>';
+                }
+            });
+        }
+        
+        socket.on('stats_update', (data) => {
+            document.getElementById('total-packets').textContent = data.total_packets || 0;
+            document.getElementById('packets-per-sec').textContent = data.packets_per_sec || 0;
+            document.getElementById('bandwidth').innerHTML = (data.bandwidth || 0) + ' <span style="font-size: 16px;">MB/s</span>';
+            document.getElementById('connections').textContent = data.active_connections || 0;
+            document.getElementById('threats-count').textContent = data.blocked_attempts || 0;
+        });
+        
+        socket.on('new_log', (log) => {
+            const entry = document.createElement('div');
+            entry.className = 'log-entry' + (log.type === 'ALERT' ? ' alert' : '');
+            
+            // Parse and display TCP flags
+            let flagDisplay = '';
+            if (log.flags && log.protocol === 'TCP') {
+                const flagStr = log.flags;
+                let badges = '';
+                if (flagStr.includes('S')) badges += '<span class="flag-badge flag-S">S</span>';
+                if (flagStr.includes('A')) badges += '<span class="flag-badge flag-A">A</span>';
+                if (flagStr.includes('F')) badges += '<span class="flag-badge flag-F">F</span>';
+                if (flagStr.includes('R')) badges += '<span class="flag-badge flag-R">R</span>';
+                if (flagStr.includes('P')) badges += '<span class="flag-badge flag-P">P</span>';
+                if (flagStr.includes('U')) badges += '<span class="flag-badge flag-U">U</span>';
+                flagDisplay = ` ${badges}`;
+            }
+            
+            entry.innerHTML = `<div class="timestamp">${new Date(log.timestamp).toLocaleTimeString()}</div>
+                <div>${log.source}:${log.sport||0} → ${log.destination}:${log.port} [${log.protocol}]${flagDisplay}</div>
+                <div style="color: #64748b; font-size: 12px;">${log.message}</div>`;
+            
+            const list = document.getElementById('log-list');
+            list.insertBefore(entry, list.firstChild);
+            while (list.children.length > 100) list.removeChild(list.lastChild);
+            
+            const overviewList = document.getElementById('overview-logs');
+            const overviewEntry = entry.cloneNode(true);
+            overviewList.insertBefore(overviewEntry, overviewList.firstChild);
+            while (overviewList.children.length > 10) overviewList.removeChild(overviewList.lastChild);
+            
+            // Also add to overview flags if it has TCP flags
+            if (log.flags && log.protocol === 'TCP') {
+                const flagEntry = document.createElement('div');
+                flagEntry.className = 'flag-entry';
+                
+                let flagBadges = '';
+                if (log.flags.includes('S')) flagBadges += '<span class="flag-badge flag-S">SYN</span>';
+                if (log.flags.includes('A')) flagBadges += '<span class="flag-badge flag-A">ACK</span>';
+                if (log.flags.includes('F')) flagBadges += '<span class="flag-badge flag-F">FIN</span>';
+                if (log.flags.includes('R')) flagBadges += '<span class="flag-badge flag-R">RST</span>';
+                if (log.flags.includes('P')) flagBadges += '<span class="flag-badge flag-P">PSH</span>';
+                if (log.flags.includes('U')) flagBadges += '<span class="flag-badge flag-U">URG</span>';
+                
+                flagEntry.innerHTML = `
+                    <div class="timestamp">${new Date(log.timestamp).toLocaleTimeString()}</div>
+                    <div>${log.source}:${log.sport||0} → ${log.destination}:${log.port}</div>
+                    <div style="margin-top: 5px;">Flags: ${flagBadges}</div>
+                `;
+                
+                const overviewFlags = document.getElementById('overview-flags');
+                overviewFlags.insertBefore(flagEntry, overviewFlags.firstChild);
+                while (overviewFlags.children.length > 5) overviewFlags.removeChild(overviewFlags.lastChild);
+            }
+        });
+        
+        socket.on('new_threat', (threat) => {
+            const entry = document.createElement('div');
+            entry.className = 'threat-entry';
+            entry.innerHTML = `<h4>${threat.type} - ${threat.severity}</h4>
+                <div class="timestamp">${new Date(threat.timestamp).toLocaleTimeString()}</div>
+                <div>Source: ${threat.source}</div>
+                <div style="margin-top: 5px;">${threat.description}</div>`;
+            
+            document.getElementById('threat-list').insertBefore(entry, document.getElementById('threat-list').firstChild);
+            
+            const overviewEntry = entry.cloneNode(true);
+            document.getElementById('overview-threats').insertBefore(overviewEntry, document.getElementById('overview-threats').firstChild);
+            while (document.getElementById('overview-threats').children.length > 5) {
+                document.getElementById('overview-threats').removeChild(document.getElementById('overview-threats').lastChild);
+            }
+        });
+        
+        async function loadDNS(isOverview = false) {
+            const data = await (await fetch('/api/dns')).json();
+            const list = document.getElementById(isOverview ? 'overview-dns' : 'dns-list');
+            list.innerHTML = '';
+            let count = 0;
+            for (const [ip, queries] of Object.entries(data)) {
+                for (const q of queries.slice(-10)) {
+                    if (isOverview && count >= 5) break;
+                    const entry = document.createElement('div');
+                    entry.className = 'dns-entry';
+                    entry.innerHTML = `<div class="timestamp">${new Date(q.timestamp * 1000).toLocaleTimeString()}</div>
+                        <div><strong>${ip}</strong> → ${q.query}</div>`;
+                    list.appendChild(entry);
+                    count++;
+                }
+                if (isOverview && count >= 5) break;
+            }
+            if (list.children.length === 0) {
+                list.innerHTML = '<div style="text-align: center; padding: 40px; color: #64748b;">No DNS queries yet</div>';
+            }
+        }
+        
+        async function loadHTTP(isOverview = false) {
+            const data = await (await fetch('/api/http')).json();
+            const list = document.getElementById(isOverview ? 'overview-http' : 'http-list');
+            list.innerHTML = '';
+            let count = 0;
+            for (const [ip, reqs] of Object.entries(data)) {
+                for (const r of reqs.slice(-10)) {
+                    if (isOverview && count >= 5) break;
+                    const entry = document.createElement('div');
+                    entry.className = 'http-entry';
+                    entry.innerHTML = `<div class="timestamp">${new Date(r.timestamp * 1000).toLocaleTimeString()}</div>
+                        <div><strong>${ip}</strong></div>
+                        <div style="font-family: monospace; font-size: 12px; color: #94a3b8;">${r.request}</div>`;
+                    list.appendChild(entry);
+                    count++;
+                }
+                if (isOverview && count >= 5) break;
+            }
+            if (list.children.length === 0) {
+                list.innerHTML = '<div style="text-align: center; padding: 40px; color: #64748b;">No HTTP requests yet</div>';
+            }
+        }
+        
+        async function loadStats() {
+            const data = await (await fetch('/api/statistics')).json();
+            document.getElementById('stats-details').innerHTML = `
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                    <div class="stat-card"><h3>TCP Packets</h3><div class="value" style="color: #3b82f6;">${data.tcp_packets||0}</div></div>
+                    <div class="stat-card"><h3>UDP Packets</h3><div class="value" style="color: #8b5cf6;">${data.udp_packets||0}</div></div>
+                    <div class="stat-card"><h3>ICMP Packets</h3><div class="value" style="color: #f59e0b;">${data.icmp_packets||0}</div></div>
+                    <div class="stat-card"><h3>DNS Queries</h3><div class="value" style="color: #10b981;">${data.dns_queries||0}</div></div>
+                    <div class="stat-card"><h3>HTTP Requests</h3><div class="value" style="color: #06b6d4;">${data.http_requests||0}</div></div>
+                    <div class="stat-card"><h3>Suspicious Payloads</h3><div class="value" style="color: #ff4444;">${data.suspicious_payloads||0}</div></div>
+                    <div class="stat-card"><h3>Failed Handshakes</h3><div class="value" style="color: #ef4444;">${data.failed_handshakes||0}</div></div>
+                    <div class="stat-card"><h3>SYN Scans</h3><div class="value" style="color: #3b82f6;">${data.syn_scans||0}</div></div>
+                    <div class="stat-card"><h3>FIN Scans</h3><div class="value" style="color: #f59e0b;">${data.fin_scans||0}</div></div>
+                    <div class="stat-card"><h3>XMAS Scans</h3><div class="value" style="color: #ec4899;">${data.xmas_scans||0}</div></div>
+                    <div class="stat-card"><h3>NULL Scans</h3><div class="value" style="color: #64748b;">${data.null_scans||0}</div></div>
+                    <div class="stat-card"><h3>Monitored IPs</h3><div class="value">${data.monitored_ips||0}</div></div>
+                </div>`;
+        }
+        
+        // Initial page load
+        fetch('/api/logs').then(r => r.json()).then(logs => {
+            const logList = document.getElementById('log-list');
+            const overviewList = document.getElementById('overview-logs');
+            logs.reverse().forEach((log, i) => {
+                const entry = document.createElement('div');
+                entry.className = 'log-entry' + (log.type === 'ALERT' ? ' alert' : '');
+                entry.innerHTML = `<div class="timestamp">${new Date(log.timestamp).toLocaleTimeString()}</div>
+                    <div>${log.source}:${log.sport||0} → ${log.destination}:${log.port} [${log.protocol}]</div>
+                    <div style="color: #64748b; font-size: 12px;">${log.message}</div>`;
+                logList.appendChild(entry);
+                if (i < 10) overviewList.appendChild(entry.cloneNode(true));
+            });
+        });
+        
+        fetch('/api/threats').then(r => r.json()).then(threats => {
+            const threatList = document.getElementById('threat-list');
+            const overviewList = document.getElementById('overview-threats');
+            threats.reverse().forEach((threat, i) => {
+                const entry = document.createElement('div');
+                entry.className = 'threat-entry';
+                entry.innerHTML = `<h4>${threat.type} - ${threat.severity}</h4>
+                    <div class="timestamp">${new Date(threat.timestamp).toLocaleTimeString()}</div>
+                    <div>Source: ${threat.source}</div>
+                    <div style="margin-top: 5px;">${threat.description}</div>`;
+                threatList.appendChild(entry);
+                if (i < 5) overviewList.appendChild(entry.cloneNode(true));
+            });
+        });
+        
+        setTimeout(() => {
+            loadFlags(true);
+            loadDNS(true);
+            loadHTTP(true);
+        }, 1000);
+    </script>
+</body>
+</html><!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NetGuard - Enhanced Monitor</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: system-ui; background: #0a0e1a; color: #e0e6ed; }
+        .header { background: linear-gradient(135deg, #1e293b, #0f172a); padding: 20px; border-bottom: 2px solid #00ff88; }
+        .header h1 { color: #00ff88; font-size: 28px; }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; padding: 20px; }
+        .stat-card { background: linear-gradient(135deg, #1e293b, #0f172a); padding: 20px; border-radius: 10px; border: 1px solid #00ff88; }
+        .stat-card h3 { font-size: 14px; color: #64748b; margin-bottom: 10px; }
+        .stat-card .value { font-size: 32px; font-weight: bold; color: #00ff88; }
+        .tabs { display: flex; gap: 10px; padding: 0 20px; background: #0f172a; border-bottom: 1px solid #1e293b; }
+        .tab { padding: 15px 25px; cursor: pointer; border: none; background: transparent; color: #64748b; font-weight: 600; border-bottom: 3px solid transparent; }
+        .tab:hover { color: #00ff88; }
+        .tab.active { color: #00ff88; border-bottom-color: #00ff88; }
+        .tab-content { display: none; padding: 20px; }
+        .tab-content.active { display: block; }
         .log-container { background: #0d1117; border: 1px solid #1e293b; border-radius: 8px; padding: 15px; max-height: 600px; overflow-y: auto; }
         .log-entry { padding: 10px; margin-bottom: 8px; background: #1e293b; border-radius: 5px; border-left: 3px solid #00ff88; font-family: monospace; font-size: 13px; }
         .log-entry.alert { border-left-color: #ff4444; background: rgba(255, 68, 68, 0.1); }
