@@ -30,6 +30,7 @@ class EnhancedPacketAnalyzer:
         self.data_exfiltration = defaultdict(int)  # Track large outbound data
         self.suspicious_ips = set()
         self.failed_connections = defaultdict(int)
+        self.flag_tracker = defaultdict(lambda: defaultdict(int))  # Track flag patterns per IP
         
         # Statistics
         self.stats = {
@@ -40,7 +41,11 @@ class EnhancedPacketAnalyzer:
             'dns_queries': 0,
             'http_requests': 0,
             'suspicious_payloads': 0,
-            'failed_handshakes': 0
+            'failed_handshakes': 0,
+            'syn_scans': 0,
+            'fin_scans': 0,
+            'xmas_scans': 0,
+            'null_scans': 0
         }
         
         # Suspicious payload patterns (basic malware/attack signatures)
@@ -131,6 +136,12 @@ class EnhancedPacketAnalyzer:
             exfil_threat = self.detect_data_exfiltration(src_ip, dst_ip, packet_size)
             if exfil_threat and not threat:
                 threat = exfil_threat
+            
+            # Flag-based scan detection (TCP only)
+            if protocol_name == 'TCP' and flags:
+                flag_threat = self.detect_flag_scans(src_ip, dst_ip, dst_port, flags)
+                if flag_threat and not threat:
+                    threat = flag_threat
             
             # Create log entry
             log_entry = {
@@ -382,6 +393,97 @@ class EnhancedPacketAnalyzer:
                     'severity': 'HIGH',
                     'description': f'Large data transfer to {dst_ip} - {total_mb:.2f} MB',
                     'source': src_ip
+                }
+        
+        return None
+    
+    def detect_flag_scans(self, src_ip, dst_ip, dst_port, flags):
+        """
+        Detect flag-based scanning techniques
+        - SYN scan: S flag only
+        - FIN scan: F flag only  
+        - XMAS scan: FPU flags
+        - NULL scan: No flags
+        """
+        # Skip internal IPs
+        if src_ip.startswith(('192.168.', '10.', '172.16.', '172.17.', '172.18.', 
+                              '172.19.', '172.20.', '172.21.', '172.22.', '172.23.',
+                              '172.24.', '172.25.', '172.26.', '172.27.', '172.28.',
+                              '172.29.', '172.30.', '172.31.', '127.')):
+            return None
+        
+        flag_str = str(flags)
+        current_time = time.time()
+        
+        # Initialize tracking
+        if 'first_seen' not in self.flag_tracker[src_ip]:
+            self.flag_tracker[src_ip]['first_seen'] = current_time
+        
+        # FIN Scan Detection: F flag without ACK (stealth scan)
+        if 'F' in flag_str and 'A' not in flag_str and 'S' not in flag_str:
+            self.flag_tracker[src_ip]['fin_count'] += 1
+            self.stats['fin_scans'] += 1
+            if self.flag_tracker[src_ip]['fin_count'] > 10:
+                return {
+                    'type': 'FIN Scan',
+                    'severity': 'HIGH',
+                    'description': f'FIN scan from {src_ip} - stealth port scanning detected',
+                    'source': src_ip,
+                    'flags': flag_str
+                }
+        
+        # XMAS Scan Detection: FPU flags (Christmas tree packet)
+        if 'F' in flag_str and 'P' in flag_str and 'U' in flag_str:
+            self.flag_tracker[src_ip]['xmas_count'] += 1
+            self.stats['xmas_scans'] += 1
+            if self.flag_tracker[src_ip]['xmas_count'] > 5:
+                return {
+                    'type': 'XMAS Scan',
+                    'severity': 'HIGH',
+                    'description': f'XMAS scan from {src_ip} - advanced stealth scanning',
+                    'source': src_ip,
+                    'flags': flag_str
+                }
+        
+        # NULL Scan Detection: No flags set
+        if flag_str == '' or flag_str == '0':
+            self.flag_tracker[src_ip]['null_count'] += 1
+            self.stats['null_scans'] += 1
+            if self.flag_tracker[src_ip]['null_count'] > 10:
+                return {
+                    'type': 'NULL Scan',
+                    'severity': 'HIGH',
+                    'description': f'NULL scan from {src_ip} - firewall evasion attempt',
+                    'source': src_ip,
+                    'flags': 'NONE'
+                }
+        
+        # SYN Scan Detection: S flag only (standard port scan)
+        if 'S' in flag_str and 'A' not in flag_str:
+            self.flag_tracker[src_ip]['syn_scan_count'] += 1
+            self.stats['syn_scans'] += 1
+            time_window = current_time - self.flag_tracker[src_ip]['first_seen']
+            
+            # >30 SYN packets in 60 seconds
+            if time_window < 60 and self.flag_tracker[src_ip]['syn_scan_count'] > 30:
+                return {
+                    'type': 'SYN Scan',
+                    'severity': 'MEDIUM',
+                    'description': f'SYN scan from {src_ip} - {self.flag_tracker[src_ip]["syn_scan_count"]} probes',
+                    'source': src_ip,
+                    'flags': flag_str
+                }
+        
+        # ACK Scan Detection: A flag without SYN (firewall rule detection)
+        if 'A' in flag_str and 'S' not in flag_str and 'F' not in flag_str and 'R' not in flag_str:
+            self.flag_tracker[src_ip]['ack_scan_count'] += 1
+            if self.flag_tracker[src_ip]['ack_scan_count'] > 20:
+                return {
+                    'type': 'ACK Scan',
+                    'severity': 'MEDIUM',
+                    'description': f'ACK scan from {src_ip} - firewall rule mapping',
+                    'source': src_ip,
+                    'flags': flag_str
                 }
         
         return None
